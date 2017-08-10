@@ -1,12 +1,15 @@
 package jerimum
 
 import java.awt.Graphics2D
+import java.awt.geom.AffineTransform
 
-import scala.util.{ Failure, Try }
-
-import br.edu.ifrn.potigol.Potigolutil.{ Inteiro, Real, Texto }
+import scala.util.{Failure, Try}
+import br.edu.ifrn.potigol.Potigolutil.{Inteiro, Real, Texto}
+import jerimum.fisica.Mundo
 
 object Jogo extends Runnable {
+  var transformacao: Option[AffineTransform] = None
+
   var titulo: Texto = "Sem Nome"
   var largura: Inteiro = 640
   var altura: Inteiro = 480
@@ -34,6 +37,9 @@ object Jogo extends Runnable {
       case Some(strategy) => strategy.getDrawGraphics match {
         case g: Graphics2D =>
           g.clearRect(0, 0, largura, altura)
+          if (this.transformacao.isDefined) {
+            g.setTransform(this.transformacao.get)
+          }
           Desenho.desenhe(g)
           strategy.show
           g.dispose()
@@ -43,26 +49,17 @@ object Jogo extends Runnable {
 
   override def run() = {
     init()
-    val frequencia = 1000000000.0 / fps
-    var delta = 0.0
-    var ultimo = System.nanoTime()
-    var tempo = 0L
-    var ciclos = 0
+    val restricao = 1000f/this.fps/1000f
+    Relogio.atualizar()
+    atualize()
+    draw()
+    desenhe()
     while (running) {
-      val agora = System.nanoTime()
-      delta += (agora - ultimo) / frequencia
-      tempo += agora - ultimo
-      ultimo = agora
-      if (delta >= 1) {
+      if (relogio.variacao >= restricao) {
         atualize()
         draw()
         desenhe()
-        ciclos += 1
-        delta -= 1
-      }
-      if (tempo >= 1000000000) {
-        ciclos = 0
-        tempo = 0
+        Relogio.atualizar()
       }
     }
     parar()
@@ -70,13 +67,16 @@ object Jogo extends Runnable {
 
   def iniciar(titulo: Texto = "Potigol com Jerimum", largura: Inteiro = 640,
               altura: Inteiro = 480, atualize: => Unit = {},
-              desenhe: => Unit = {}, fps: Inteiro = 60) = synchronized {
+              desenhe: => Unit = {}, fps: Inteiro = 60, transformacao: AffineTransform = null) = synchronized {
     this.titulo = titulo
     this.largura = largura
     this.altura = altura
     this.fps = fps
     this.atualize = atualize _
     this.desenhe = desenhe _
+    if (transformacao != null) {
+      this.transformacao = Some(transformacao)
+    }
     if (!running) {
       running = true
       thread = new Thread(this) {
@@ -90,7 +90,7 @@ object Jogo extends Runnable {
       running = false
       Try(thread.join()) match {
         case Failure(e) => e.printStackTrace()
-        case _          =>
+        case _ =>
       }
     }
   }
@@ -98,6 +98,7 @@ object Jogo extends Runnable {
   def distância(x1: Real, y1: Real, x2: Real, y2: Real): Real = {
     Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2))
   }
+
   val distancia = distância _
 
   def projeção_X(angulo: Real, valor: Real): Real = {
